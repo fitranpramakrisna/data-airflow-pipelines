@@ -1,0 +1,61 @@
+"""DAG nonaktif domain Scopus untuk scraping lokasi afiliasi."""
+
+from datetime import datetime, timedelta
+
+from airflow import DAG
+from airflow.operators.python import PythonOperator
+from airflow.models import Variable
+from importlib import import_module
+import pendulum
+
+
+
+import sys
+sys.path.append("/opt/airflow")
+
+run_scopus_scraper = import_module(
+    "scripts.scopus.09_scrape_collaborator_locations"
+).run_scopus_scraper
+
+
+# =========================
+# DEFAULT ARGUMENTS
+# =========================
+default_args = {
+    "owner": "data-engineering",
+    "depends_on_past": False,
+    "email_on_failure": True,
+    "email_on_retry": False,
+    "retries": 2,
+    "retry_delay": timedelta(minutes=10),
+}
+
+
+# =========================
+# DAG DEFINITION
+# =========================
+local_tz = pendulum.timezone("Asia/Jakarta")
+# start_date=local_tz.datetime(2026, 1, 20, 9, 0, 0)
+
+with DAG(
+    
+    dag_id="scopus_09_scrape_collaborator_locations",
+    description="Scrape Scopus affiliation location data",
+    default_args=default_args,
+    start_date=datetime(2026, 1, 20),
+    # schedule="0 */6 * * *",  # tiap 4 jam
+    catchup=False,
+    max_active_runs=1,
+    tags=["scopus", "scraping", "selenium"],
+) as dag:
+
+    run_scraper = PythonOperator(
+        task_id="run_scrape_collaborator_locations",
+        python_callable=run_scopus_scraper,
+        op_kwargs={
+            "email": Variable.get("SCOPUS_EMAIL"),
+            "password": Variable.get("SCOPUS_PASSWORD"),
+        },
+    )
+
+    run_scraper

@@ -1,0 +1,13 @@
+# SCRAPING TOOLS
+pandas
+selenium==4.46.0
+seleniumbase==4.51.8
+requests
+undetected-chromedriver
+websockets==16.1.1
+
+
+# SQL
+apache-airflow-providers-common-sql
+apache-airflow-providers-mysql
+apache-airflow-providers-smtp

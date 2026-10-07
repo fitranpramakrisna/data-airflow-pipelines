@@ -1,0 +1,1 @@
+-- SQL placeholder untuk pengujian Airflow.

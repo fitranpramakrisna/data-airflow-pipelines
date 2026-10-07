@@ -1,0 +1,265 @@
+# Domain: scopus
+# =========================================================
+# ====================== IMPORT ===========================
+# =========================================================
+
+import os
+import sys
+import time
+import json
+import random
+import re
+import mysql.connector
+from urllib import response
+import requests
+from datetime import datetime
+from typing import Dict
+from urllib.parse import urlparse, parse_qs
+
+from dotenv import load_dotenv
+from seleniumbase import SB
+from bs4 import BeautifulSoup
+
+
+# =========================================================
+# ====================== ENV CONFIG =======================
+# =========================================================
+
+load_dotenv()
+
+SCOPUS_USER = os.getenv("SCOPUS_USER")
+SCOPUS_PASS = os.getenv("SCOPUS_PASS")
+
+if not SCOPUS_USER or not SCOPUS_PASS:
+    raise RuntimeError("SCOPUS_USER / SCOPUS_PASS belum di-set di .env")
+
+
+# =========================================================
+# ====================== DB CONFIG ========================
+# =========================================================
+
+mydb = mysql.connector.connect(
+    host=os.getenv("DB_HOST"),
+    user=os.getenv("DB_USER"),
+    password=os.getenv("DB_PASS"),
+    database="db_scopus",
+    auth_plugin=os.getenv("DB_AUTH_PLUGIN", "mysql_native_password")
+)
+
+
+# =========================================================
+# ====================== LOGIN ============================
+# =========================================================
+
+LOGIN_START_URL = (
+    "https://id.elsevier.com/as/authorization.oauth2"
+    "?platSite=SC%2Fscopus&ui_locales=en-US&scope=openid+profile+email"
+    "+els_auth_info+els_analytics_info+urn%3Acom%3Aelsevier%3Aidp%3Apolicy%3Aproduct%3Aindv_identity"
+    "&els_policy=idp_policy_indv_identity_plus&response_type=code"
+    "&redirect_uri=https%3A%2F%2Fwww.scopus.com%2Fauthredirect.uri"
+    "&state=userLogin&authType=SINGLE_SIGN_IN&prompt=login&client_id=SCOPUS"
+)
+
+
+def login_scopus_uc(sb):
+
+    print("🔄 Login ke Scopus (UC Mode)...")
+
+    sb.driver.set_page_load_timeout(60)
+    print("🌐 Membuka halaman login Elsevier...")
+    sb.uc_open_with_reconnect(LOGIN_START_URL, reconnect_time=4)
+    print("✅ Halaman login terbuka")
+    sb.sleep(5)
+
+    sb.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+    sb.sleep(2)
+
+    sb.execute_script("""
+        var btn = document.getElementById('onetrust-accept-btn-handler');
+        if (btn) btn.click();
+    """)
+
+    sb.sleep(2)
+
+    sb.execute_script("window.scrollTo(0, 0);")
+    sb.sleep(1)
+
+    sb.wait_for_element_visible("#bdd-email", timeout=20)
+    print("📧 Mengisi username...")
+    sb.type("#bdd-email", SCOPUS_USER)
+
+    sb.wait_for_element_visible("#bdd-elsPrimaryBtn", timeout=20)
+    sb.uc_click("#bdd-elsPrimaryBtn", reconnect_time=3)
+
+    sb.sleep(3)
+
+    sb.wait_for_element_visible("#bdd-password", timeout=20)
+    print("🔐 Mengisi password...")
+    sb.type("#bdd-password", SCOPUS_PASS)
+
+    sb.uc_click("#bdd-elsPrimaryBtn", reconnect_time=3)
+
+    sb.sleep(4)
+
+    print("🤖 Memeriksa CAPTCHA...")
+    sb.uc_gui_click_captcha()
+    sb.sleep(5)
+
+    print("✅ Login selesai")
+
+
+# =========================================================
+# ====================== UTIL =============================
+# =========================================================
+
+def extract_numbers(html_string):
+
+    match = re.search(r'\d+$', html_string)
+
+    if match:
+        return match.group()
+    else:
+        return None
+
+
+# =========================================================
+# ====================== SCRAPER ==========================
+# =========================================================
+
+def scrape_affiliation(sb):
+
+    statis = "https://www.scopus.com/results/affiliationResults.uri?resultsPerPage=20&offset=1&sort=afcnt-f&jtp=true&allField=off&allField2=off&tooManySelections=false&previousSelectionCount=0&preferredName=&affiliationId=&sid=6b66a1d5d52b7e9340467a4d725a4ce9&searchDataID=6b66a1d5d52b7e9340467a4d725a4ce9&selectionPageSearch=afsp&affilName=Indonesia&s=AFFIL%28Indonesia%29&cl=t&showFullList=false&txGid=a84949fdaa368d23114f72d6ede81573"
+
+    n = 1
+
+    sb.open(statis)
+    sb.sleep(5)
+
+    htmls = sb.get_page_source()
+    soup = BeautifulSoup(htmls, "html.parser")
+
+    span = soup.find("span", class_='resultsCount')
+
+    jml = span.text.strip()
+
+    print("Total Data:", jml)
+
+    while n <= int(jml):
+
+        linka = f"https://www.scopus.com/results/affiliationResults.uri?resultsPerPage=20&offset={n}&sort=afcnt-f&jtp=true&allField=off&allField2=off&tooManySelections=false&previousSelectionCount=0&preferredName=&affiliationId=&sid=6b66a1d5d52b7e9340467a4d725a4ce9&searchDataID=6b66a1d5d52b7e9340467a4d725a4ce9&selectionPageSearch=afsp&affilName=Indonesia&s=AFFIL%28Indonesia%29&cl=t&showFullList=false&txGid=a84949fdaa368d23114f72d6ede81573"
+
+        sb.open(linka)
+        sb.sleep(4)
+
+        html = sb.get_page_source()
+        soup = BeautifulSoup(html, "html.parser")
+
+        table = soup.find("table", id="srchResultsList")
+
+        for tr in table.find_all('tr', class_='searchArea'):
+
+            i = 0
+
+            for td in tr.find_all('td'):
+
+                if i == 0:
+
+                    link = td.find('a', href=True)['href']
+                    affiliationID = extract_numbers(link)
+
+                    for a in td.find_all('a', limit=1):
+                        univ = a.text.strip()
+
+                if i == 1:
+
+                    for a in td.find_all('a', limit=1):
+                        AffiliationCount = a.text.strip()
+
+                if i == 2:
+
+                    for a in td.find_all('a', limit=1):
+                        institutionCount = a.text.strip()
+
+                if i == 3:
+
+                    asalKota = td.text.strip()
+
+                i += 1
+
+            try:
+
+                cursor = mydb.cursor()
+
+                query = "SELECT * FROM db_scopus.t_pt_scopus_temp WHERE affiliation_id=%s"
+                cursor.execute(query, (affiliationID,))
+
+                records = cursor.fetchall()
+
+                if len(records) == 0:
+
+                    cursor.execute(
+                        """
+                        INSERT INTO db_scopus.t_pt_scopus_temp
+                        (affiliation_id,nama_pt,jml_dokumen_institusi,
+                        jml_dokumen_afiliasi_only,asal_kota_pt,flag)
+                        VALUES(%s,%s,%s,%s,%s,%s)
+                        """,
+                        (
+                            affiliationID,
+                            univ,
+                            institutionCount,
+                            AffiliationCount,
+                            asalKota,
+                            0
+                        )
+                    )
+
+                    mydb.commit()
+
+                    print("Inserted:", univ)
+
+                else:
+
+                    cursor.execute(
+                        """
+                        UPDATE db_scopus.t_pt_scopus_temp
+                        SET jml_dokumen_institusi=%s,
+                        jml_dokumen_afiliasi_only=%s
+                        WHERE affiliation_id=%s
+                        """,
+                        (
+                            institutionCount,
+                            AffiliationCount,
+                            affiliationID
+                        )
+                    )
+
+                    mydb.commit()
+
+                    print("Updated:", univ)
+
+            except Exception as e:
+
+                print("Error:", e)
+
+        n += 20
+
+
+# =========================================================
+# ====================== MAIN =============================
+# =========================================================
+
+if __name__ == "__main__":
+
+    with SB(
+        uc=True,
+        headed=True,
+        headless=False,
+        xvfb=True,
+        incognito=True,
+        page_load_strategy="eager",
+    ) as sb:
+
+        login_scopus_uc(sb)
+
+        scrape_affiliation(sb)

@@ -1,0 +1,7 @@
+{"timestamp":"2026-01-28T05:03:26.895937Z","level":"info","event":"DAG bundles loaded: dags-folder","logger":"airflow.dag_processing.bundles.manager.DagBundlesManager","filename":"manager.py","lineno":179}
+{"timestamp":"2026-01-28T05:03:26.901694Z","level":"info","event":"Filling up the DagBag from /opt/airflow/dags/scopus_scraper_dag.py","logger":"airflow.models.dagbag.DagBag","filename":"dagbag.py","lineno":593}
+{"timestamp":"2026-01-28T05:03:27.919715Z","level":"warning","event":"The `airflow.operators.python.PythonOperator` attribute is deprecated. Please use `'airflow.providers.standard.operators.python.PythonOperator'`.","category":"DeprecatedImportWarning","filename":"/opt/airflow/dags/scopus_scraper_dag.py","lineno":4,"logger":"py.warnings"}
+{"timestamp":"2026-01-28T05:03:30.130833Z","level":"info","event":"patching driver executable /home/airflow/.local/share/undetected_chromedriver/undetected_chromedriver","logger":"undetected_chromedriver.patcher","filename":"patcher.py","lineno":346}
+{"timestamp":"2026-01-28T05:03:32.133165Z","level":"info","event":"setting properties for headless","logger":"uc","filename":"__init__.py","lineno":493}
+{"timestamp":"2026-01-28T05:03:32.194374Z","level":"error","event":"Server indicated the task shouldn't be running anymore. Terminating process","detail":{"detail":{"reason":"not_running","message":"TI is no longer in the running state and task should terminate","current_state":"failed"}},"logger":"task"}
+{"timestamp":"2026-01-28T05:03:37.263926Z","level":"error","event":"Task killed!","logger":"task"}

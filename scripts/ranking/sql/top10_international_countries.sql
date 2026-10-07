@@ -1,0 +1,54 @@
+-- Domain: ranking
+-- INSERT INTO fact_researchview.airflow_testing (
+--     pub_year,
+--     affiliation_id,
+--     university,
+--     country,
+--     total_pub
+-- )
+-- WITH country_count AS (
+--     SELECT 
+--         YEAR(ds.tgl_terbit_scopus) AS pub_year,
+--         ps.affiliation_id,
+--         MAX(ps.nama_pt) AS university,
+--         ucl.country,
+--         COUNT(DISTINCT ds.eid_scopus) AS total_pub
+--     FROM db_scopus.t_document_scopus ds
+--     JOIN db_scopus.t_document_scopus_author dsa 
+--         ON dsa.eid_scopus = ds.eid_scopus
+--     JOIN db_scopus.t_pt_scopus ps 
+--         ON ps.affiliation_id = ds.affiliation_id
+--     JOIN db_scopus.t_univ_colaborator_location ucl
+--         ON ucl.affiliation_author_id = dsa.affiliation_author_id
+--     WHERE 
+--         ds.tgl_terbit_scopus >= '2014-01-01' 
+--         AND ucl.preferredName <> "" 
+--         AND ucl.country <> "" 
+--         AND ucl.country <> "Indonesia"
+--     GROUP BY 
+--         YEAR(ds.tgl_terbit_scopus),
+--         ps.affiliation_id,
+--         ucl.country
+-- ),
+-- ranked AS (
+--     SELECT
+--         *,
+--         ROW_NUMBER() OVER (
+--             PARTITION BY pub_year, university
+--             ORDER BY total_pub DESC
+--         ) AS rn
+--     FROM country_count
+-- )
+-- SELECT 
+--     pub_year,
+--     affiliation_id,
+--     university,
+--     country,
+--     total_pub
+-- FROM ranked
+-- WHERE rn <= 10
+-- ON DUPLICATE KEY UPDATE
+--     university = VALUES(university),
+--     total_pub = VALUES(total_pub);
+
+SELECT * FROM fact_researchview.t_top10_international_countries;

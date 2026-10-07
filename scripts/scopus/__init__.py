@@ -1,0 +1,1 @@
+"""Script untuk domain Scopus."""

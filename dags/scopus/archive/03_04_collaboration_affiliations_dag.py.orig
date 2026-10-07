@@ -1,0 +1,85 @@
+"""DAG untuk mengambil dan memperbarui data afiliasi kolaborasi Scopus."""
+
+from datetime import timedelta
+
+import pendulum
+from airflow import DAG
+from airflow.providers.standard.operators.bash import BashOperator
+
+
+JAKARTA_TZ = pendulum.timezone("Asia/Jakarta")
+INSERT_SCRIPT_PATH = "/opt/airflow/scripts/scopus/03_insert_data_collaboration.py"
+UPDATE_SCRIPT_PATH = "/opt/airflow/scripts/scopus/04_update_data_collaboration.py"
+SCOPUS_CONN_ID = "scopus_credentials"
+MYSQL_CONN_ID = "db_scopus"
+
+default_args = {
+    "owner": "data-engineering",
+    "depends_on_past": False,
+    "retries": 1,
+    "retry_delay": timedelta(minutes=10),
+    "email_on_failure": False,
+    "email_on_retry": False,
+}
+
+
+with DAG(
+    dag_id="update_data_collaboration",
+    description="Ambil data afiliasi kolaborasi lalu perbarui negaranya",
+    default_args=default_args,
+    start_date=pendulum.datetime(2026, 8, 1, tz=JAKARTA_TZ),
+    schedule="0 3 1 * *",
+    catchup=False,
+    max_active_runs=1,
+    max_active_tasks=1,
+    tags=["scopus", "collaboration", "selenium", "t_pt_scopus"],
+) as dag:
+    run_insert_data_collaboration = BashOperator(
+        task_id="run_insert_data_collaboration",
+        bash_command=(
+            f'test -f "{INSERT_SCRIPT_PATH}" '
+            f'&& python -u "{INSERT_SCRIPT_PATH}"'
+        ),
+        append_env=True,
+        env={
+            "PYTHONUNBUFFERED": "1",
+            "SCOPUS_USER": f"{{{{ conn.{SCOPUS_CONN_ID}.login }}}}",
+            "SCOPUS_PASS": f"{{{{ conn.{SCOPUS_CONN_ID}.password }}}}",
+            "ELSEVIER_API_KEY": "{{ var.value.ELSEVIER_API_KEY }}",
+            "ELSEVIER_INSTTOKEN": "{{ var.value.ELSEVIER_INSTTOKEN }}",
+            "DB_HOST": f"{{{{ conn.{MYSQL_CONN_ID}.host }}}}",
+            "DB_USER": f"{{{{ conn.{MYSQL_CONN_ID}.login }}}}",
+            "DB_PASS": f"{{{{ conn.{MYSQL_CONN_ID}.password }}}}",
+            "DB_AUTH_PLUGIN": (
+                "{{ conn.db_scopus.extra_dejson.get("
+                "'auth_plugin', 'mysql_native_password') }}"
+            ),
+        },
+        execution_timeout=timedelta(hours=6),
+    )
+
+    run_update_data_collaboration = BashOperator(
+        task_id="run_update_data_collaboration",
+        bash_command=(
+            f'test -f "{UPDATE_SCRIPT_PATH}" '
+            f'&& python -u "{UPDATE_SCRIPT_PATH}"'
+        ),
+        append_env=True,
+        env={
+            "PYTHONUNBUFFERED": "1",
+            "SCOPUS_USER": f"{{{{ conn.{SCOPUS_CONN_ID}.login }}}}",
+            "SCOPUS_PASS": f"{{{{ conn.{SCOPUS_CONN_ID}.password }}}}",
+            "ELSEVIER_API_KEY": "{{ var.value.ELSEVIER_API_KEY }}",
+            "ELSEVIER_INSTTOKEN": "{{ var.value.ELSEVIER_INSTTOKEN }}",
+            "DB_HOST": f"{{{{ conn.{MYSQL_CONN_ID}.host }}}}",
+            "DB_USER": f"{{{{ conn.{MYSQL_CONN_ID}.login }}}}",
+            "DB_PASS": f"{{{{ conn.{MYSQL_CONN_ID}.password }}}}",
+            "DB_AUTH_PLUGIN": (
+                "{{ conn.db_scopus.extra_dejson.get("
+                "'auth_plugin', 'mysql_native_password') }}"
+            ),
+        },
+        execution_timeout=timedelta(hours=6),
+    )
+
+    run_insert_data_collaboration >> run_update_data_collaboration

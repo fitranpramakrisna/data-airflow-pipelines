@@ -1,0 +1,877 @@
+import os
+import time
+import mysql.connector
+
+from dotenv import load_dotenv
+from seleniumbase import SB
+
+
+# =========================================================
+# ====================== ENV CONFIG ========================
+# =========================================================
+
+load_dotenv()
+
+SCOPUS_USER = os.getenv("SCOPUS_USER")
+SCOPUS_PASS = os.getenv("SCOPUS_PASS")
+
+DB_HOST = os.getenv("DB_HOST")
+DB_USER = os.getenv("DB_USER")
+DB_PASS = os.getenv("DB_PASS")
+
+
+if not SCOPUS_USER or not SCOPUS_PASS:
+    raise RuntimeError(
+        "SCOPUS_USER / SCOPUS_PASS belum di-set di .env"
+    )
+
+
+# =========================================================
+# ====================== DB CONFIG =========================
+# =========================================================
+
+mydb = mysql.connector.connect(
+    host=DB_HOST,
+    user=DB_USER,
+    password=DB_PASS,
+    database="db_scopus"
+)
+
+
+# =========================================================
+# ====================== LOGIN =============================
+# =========================================================
+
+SCOPUS_HOME = "https://www.scopus.com/"
+
+
+def accept_cookie_if_exists(sb):
+    """
+    Accept OneTrust cookie banner kalau muncul.
+    """
+
+    try:
+        if sb.is_element_visible(
+            "#onetrust-accept-btn-handler"
+        ):
+            print("🍪 Accept cookie banner...")
+
+            sb.click(
+                "#onetrust-accept-btn-handler"
+            )
+
+            sb.sleep(2)
+
+    except Exception as e:
+        print(
+            "Cookie banner tidak ditemukan:",
+            str(e)
+        )
+
+
+def print_login_debug(sb):
+    """
+    Menampilkan informasi session browser
+    untuk membantu debugging login.
+    """
+
+    print("\n")
+    print("=" * 70)
+    print("LOGIN DEBUG")
+    print("=" * 70)
+
+    try:
+        print(
+            "URL:",
+            sb.get_current_url()
+        )
+    except Exception:
+        pass
+
+    try:
+        print(
+            "TITLE:",
+            sb.get_title()
+        )
+    except Exception:
+        pass
+
+    print("\nCOOKIES:")
+
+    try:
+
+        cookies = sb.driver.get_cookies()
+
+        for cookie in cookies:
+
+            print(
+                f"{cookie.get('domain')} "
+                f"| {cookie.get('name')}"
+            )
+
+    except Exception as e:
+
+        print(
+            "Tidak bisa membaca cookies:",
+            e
+        )
+
+    print("=" * 70)
+    print()
+
+
+def wait_until_back_to_scopus(
+    sb,
+    timeout=120
+):
+    """
+    Menunggu sampai authentication selesai
+    dan browser kembali ke www.scopus.com.
+    """
+
+    print(
+        "⏳ Menunggu redirect kembali ke Scopus..."
+    )
+
+    start_time = time.time()
+
+    while True:
+
+        current_url = sb.get_current_url()
+
+        print(
+            "Current URL:",
+            current_url
+        )
+
+        # Login sukses jika sudah kembali ke Scopus
+        # dan bukan halaman error.
+
+        if (
+            "scopus.com" in current_url
+            and
+            "id.elsevier.com" not in current_url
+            and
+            "error" not in current_url.lower()
+        ):
+
+            print(
+                "✅ Browser sudah kembali ke Scopus."
+            )
+
+            return True
+
+        if time.time() - start_time > timeout:
+
+            print(
+                "❌ Timeout menunggu login."
+            )
+
+            return False
+
+        sb.sleep(2)
+
+
+def login_scopus(sb):
+
+    print("\n")
+    print("=" * 70)
+    print("LOGIN SCOPUS")
+    print("=" * 70)
+
+    print(
+        "🌐 Membuka Scopus..."
+    )
+
+    sb.open(
+        SCOPUS_HOME
+    )
+
+    sb.sleep(5)
+
+    accept_cookie_if_exists(sb)
+
+    print(
+        "URL awal:",
+        sb.get_current_url()
+    )
+
+    # =====================================================
+    # CLICK SIGN IN
+    # =====================================================
+
+    print(
+        "🔐 Mencari tombol Sign in..."
+    )
+
+    sign_in_clicked = False
+
+    # Scopus kadang mengganti struktur halaman.
+    # Jadi kita mencoba beberapa selector.
+
+    selectors = [
+        'a[href*="login"]',
+        'a[href*="signin"]',
+        'button:contains("Sign in")',
+        'a:contains("Sign in")'
+    ]
+
+    for selector in selectors:
+
+        try:
+
+            if sb.is_element_visible(
+                selector
+            ):
+
+                print(
+                    "Sign in ditemukan:",
+                    selector
+                )
+
+                sb.click(
+                    selector
+                )
+
+                sign_in_clicked = True
+
+                break
+
+        except Exception:
+            continue
+
+    # Fallback:
+    # cari element berdasarkan text.
+
+    if not sign_in_clicked:
+
+        try:
+
+            sb.click_link_text(
+                "Sign in"
+            )
+
+            sign_in_clicked = True
+
+        except Exception:
+            pass
+
+    if not sign_in_clicked:
+
+        print(
+            "⚠ Tombol Sign in tidak ditemukan."
+        )
+
+        print(
+            "URL:",
+            sb.get_current_url()
+        )
+
+        raise RuntimeError(
+            "Tidak bisa membuka halaman login Scopus."
+        )
+
+    sb.sleep(5)
+
+    print(
+        "Login page:",
+        sb.get_current_url()
+    )
+
+    accept_cookie_if_exists(sb)
+
+    # =====================================================
+    # EMAIL
+    # =====================================================
+
+    try:
+
+        sb.wait_for_element_visible(
+            "#bdd-email",
+            timeout=30
+        )
+
+        print(
+            "📧 Mengisi email..."
+        )
+
+        sb.type(
+            "#bdd-email",
+            SCOPUS_USER
+        )
+
+        sb.wait_for_element_visible(
+            "#bdd-elsPrimaryBtn",
+            timeout=20
+        )
+
+        sb.click(
+            "#bdd-elsPrimaryBtn"
+        )
+
+        sb.sleep(3)
+
+    except Exception as e:
+
+        print(
+            "⚠ Field email tidak ditemukan:",
+            e
+        )
+
+    # =====================================================
+    # PASSWORD
+    # =====================================================
+
+    try:
+
+        sb.wait_for_element_visible(
+            "#bdd-password",
+            timeout=30
+        )
+
+        print(
+            "🔑 Mengisi password..."
+        )
+
+        sb.type(
+            "#bdd-password",
+            SCOPUS_PASS
+        )
+
+        sb.click(
+            "#bdd-elsPrimaryBtn"
+        )
+
+        sb.sleep(5)
+
+    except Exception as e:
+
+        print(
+            "⚠ Field password tidak ditemukan:",
+            e
+        )
+
+    # =====================================================
+    # CAPTCHA / VERIFICATION
+    # =====================================================
+
+    current_url = sb.get_current_url()
+
+    print(
+        "URL setelah submit password:",
+        current_url
+    )
+
+    print(
+        "\n"
+        "Jika muncul CAPTCHA / verification / MFA,\n"
+        "selesaikan secara manual di browser.\n"
+    )
+
+    # Kita tidak mencoba melewati CAPTCHA.
+    # Cukup tunggu sampai authentication selesai.
+
+    login_success = wait_until_back_to_scopus(
+        sb,
+        timeout=180
+    )
+
+    if not login_success:
+
+        print_login_debug(sb)
+
+        raise RuntimeError(
+            "Login Scopus gagal / redirect tidak selesai."
+        )
+
+    sb.sleep(5)
+
+    print_login_debug(sb)
+
+    print(
+        "✅ Login Scopus selesai."
+    )
+
+
+# =========================================================
+# ============= TEST SCOPUS SESSION =======================
+# =========================================================
+
+def check_scopus_session(sb):
+
+    print("\n")
+    print("=" * 70)
+    print("CHECK SCOPUS SESSION")
+    print("=" * 70)
+
+    sb.open(
+        "https://www.scopus.com/"
+    )
+
+    sb.sleep(5)
+
+    current_url = sb.get_current_url()
+
+    print(
+        "Current URL:",
+        current_url
+    )
+
+    # Kalau dilempar lagi ke login,
+    # berarti session belum valid.
+
+    if "id.elsevier.com" in current_url:
+
+        raise RuntimeError(
+            "Session Scopus belum valid."
+        )
+
+    if "error" in current_url.lower():
+
+        raise RuntimeError(
+            f"Scopus mengembalikan halaman error: {current_url}"
+        )
+
+    print(
+        "✅ Session Scopus terlihat valid."
+    )
+
+
+# =========================================================
+# =========== FETCH DOCUMENT SOURCE API ===================
+# =========================================================
+
+def fetch_document_source(
+    sb,
+    affiliation
+):
+
+    # =====================================================
+    # BUKA AFFILIATION PAGE
+    # =====================================================
+
+    landing_url = (
+        "https://www.scopus.com/"
+        "affil/counts.uri"
+        f"?id={affiliation}"
+    )
+
+    print(
+        "🌐 Landing:",
+        landing_url
+    )
+
+    sb.open(
+        landing_url
+    )
+
+    sb.sleep(
+        3
+    )
+
+    current_url = sb.get_current_url()
+
+    if "id.elsevier.com" in current_url:
+
+        return {
+            "success": False,
+            "error": "SESSION_EXPIRED",
+            "url": current_url
+        }
+
+    if "error" in current_url.lower():
+
+        return {
+            "success": False,
+            "error": "SCOPUS_ERROR_PAGE",
+            "url": current_url
+        }
+
+    # =====================================================
+    # GATEWAY API
+    # =====================================================
+
+    api_url = (
+        "https://www.scopus.com/gateway/"
+        "organisation-profile-api/"
+        "organizations/"
+        f"{affiliation}/documents/source"
+    )
+
+    print(
+        "📡 API:",
+        api_url
+    )
+
+    try:
+
+        result = sb.driver.execute_async_script(
+            """
+            const url = arguments[0];
+            const callback =
+                arguments[arguments.length - 1];
+
+            fetch(
+                url,
+                {
+                    method: "GET",
+                    credentials: "include",
+                    headers: {
+                        "Accept": "application/json"
+                    }
+                }
+            )
+            .then(async response => {
+
+                const contentType =
+                    response.headers.get(
+                        "content-type"
+                    ) || "";
+
+                if (!response.ok) {
+
+                    let body = "";
+
+                    try {
+                        body = await response.text();
+                    } catch (e) {}
+
+                    callback({
+                        success: false,
+                        status: response.status,
+                        statusText: response.statusText,
+                        body: body.substring(0, 500)
+                    });
+
+                    return;
+                }
+
+                if (
+                    !contentType.includes(
+                        "application/json"
+                    )
+                ) {
+
+                    const body =
+                        await response.text();
+
+                    callback({
+                        success: false,
+                        status: response.status,
+                        error: "NOT_JSON",
+                        body: body.substring(0, 500)
+                    });
+
+                    return;
+                }
+
+                const data =
+                    await response.json();
+
+                callback({
+                    success: true,
+                    status: response.status,
+                    data: data
+                });
+            })
+            .catch(err => {
+
+                callback({
+                    success: false,
+                    error: err.toString()
+                });
+
+            });
+            """,
+            api_url
+        )
+
+        return result
+
+    except Exception as e:
+
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
+# =========================================================
+# =========== SCRAPE DOCUMENT SOURCE ======================
+# =========================================================
+
+def scrape_doc_source(sb):
+
+    cursor = mydb.cursor()
+
+    print("🧹 Mengosongkan tabel document source temp...")
+
+    cursor.execute(
+        """
+        TRUNCATE TABLE db_scopus.t_document_source_temp
+        """
+    )
+
+    mydb.commit()
+
+    print("\n")
+    print("=" * 70)
+    print("LOAD AFFILIATIONS")
+    print("=" * 70)
+
+    cursor.execute(
+        """
+        SELECT affiliation_id
+        FROM db_scopus.t_pt_scopus
+        WHERE affiliation_id IS NOT NULL
+        ORDER BY affiliation_id
+        """
+    )
+
+    records = cursor.fetchall()
+
+    total = len(records)
+
+    print(
+        f"Total affiliation: {total}"
+    )
+
+    for no, row in enumerate(
+        records,
+        start=1
+    ):
+
+        affiliation = str(
+            row[0]
+        )
+
+        print("\n")
+        print("=" * 70)
+
+        print(
+            f"[{no}/{total}] "
+            f"AFID: {affiliation}"
+        )
+
+        print("=" * 70)
+
+        result = fetch_document_source(
+            sb,
+            affiliation
+        )
+
+        # =================================================
+        # REQUEST FAILED
+        # =================================================
+
+        if not result.get(
+            "success"
+        ):
+
+            print(
+                "❌ Request gagal:"
+            )
+
+            print(
+                result
+            )
+
+            # Session habis.
+            # Login ulang.
+
+            if result.get(
+                "error"
+            ) == "SESSION_EXPIRED":
+
+                print(
+                    "🔄 Session expired. Login ulang..."
+                )
+
+                login_scopus(
+                    sb
+                )
+
+            continue
+
+        # =================================================
+        # RESPONSE DATA
+        # =================================================
+
+        data = result.get(
+            "data",
+            {}
+        )
+
+        doc_sources = data.get(
+            "documentsBySource",
+            []
+        )
+
+        print(
+            "Jumlah document source:",
+            len(doc_sources)
+        )
+
+        rows = []
+
+        for item in doc_sources:
+
+            rows.append(
+                (
+                    item.get(
+                        "title"
+                    ),
+                    item.get(
+                        "documentsCount"
+                    ),
+                    affiliation
+                )
+            )
+
+        # =================================================
+        # INSERT DATABASE
+        # =================================================
+
+        if rows:
+
+            try:
+
+                cursor.executemany(
+                    """
+                    INSERT INTO
+                    db_scopus.t_document_source_temp
+                    (
+                        nama_source,
+                        jml_dokumen,
+                        affiliation_id
+                    )
+                    VALUES
+                    (
+                        %s,
+                        %s,
+                        %s
+                    )
+                    """,
+                    rows
+                )
+
+                mydb.commit()
+
+                print(
+                    f"✅ {len(rows)} "
+                    "data berhasil disimpan."
+                )
+
+            except Exception as e:
+
+                mydb.rollback()
+
+                print(
+                    "❌ Database error:",
+                    e
+                )
+
+        else:
+
+            print(
+                "⚠ Tidak ada document source."
+            )
+
+        # Delay kecil agar tidak terlalu agresif.
+
+        sleep_time = 2
+
+        print(
+            f"⏳ Sleep {sleep_time} detik..."
+        )
+
+        sb.sleep(
+            sleep_time
+        )
+
+    cursor.close()
+
+    print("\n")
+    print("=" * 70)
+    print("SCRAPING SELESAI")
+    print("=" * 70)
+
+
+# =========================================================
+# ====================== MAIN =============================
+# =========================================================
+
+if __name__ == "__main__":
+
+    try:
+
+        # Untuk debugging pertama:
+        #
+        # - headless=False
+        # - jangan xvfb dulu
+        #
+        # supaya proses authentication
+        # bisa kita lihat langsung.
+
+        with SB(
+            uc=True,
+            headless=False,
+            xvfb=True,
+            incognito=True
+        ) as sb:
+
+            # =============================================
+            # LOGIN
+            # =============================================
+
+            login_scopus(
+                sb
+            )
+
+            # =============================================
+            # SESSION CHECK
+            # =============================================
+
+            check_scopus_session(
+                sb
+            )
+
+            # =============================================
+            # SCRAPING
+            # =============================================
+
+            scrape_doc_source(
+                sb
+            )
+
+    except KeyboardInterrupt:
+
+        print(
+            "\n⛔ Program dihentikan user."
+        )
+
+        raise
+
+    except Exception as e:
+
+        print(
+            "\n❌ Fatal Error:",
+            e
+        )
+
+        raise
+
+    finally:
+
+        try:
+
+            if mydb.is_connected():
+
+                mydb.close()
+
+                print(
+                    "🔌 Database connection closed."
+                )
+
+        except Exception:
+            pass
